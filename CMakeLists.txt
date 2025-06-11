@@ -17,7 +17,7 @@ set(CMAKE_AUTOUIC ON)
 
 set(RESOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/resource")
 
-find_package(Qt6 REQUIRED COMPONENTS Core Widgets REQUIRED SerialPort)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets REQUIRED SerialPort Concurrent)
 
 file(GLOB_RECURSE SOURCES "source/*.cpp" "include/*.hpp" "include/*.h")
 file(GLOB_RECURSE RESOURCES "resource/*.qrc")
@@ -25,7 +25,7 @@ file(GLOB_RECURSE RESOURCES "resource/*.qrc")
 add_executable(aidoctools ${SOURCES} ${RESOURCES})
 
 target_compile_definitions(aidoctools PRIVATE RESOURCE_DIR="${RESOURCE_DIR}")
-target_link_libraries(aidoctools PRIVATE Qt6::Core Qt6::Widgets Qt6::SerialPort)
+target_link_libraries(aidoctools PRIVATE Qt6::Core Qt6::Widgets Qt6::SerialPort Qt6::Concurrent)
 target_include_directories(aidoctools PRIVATE include)
 
 #设置qDebug在终端输出

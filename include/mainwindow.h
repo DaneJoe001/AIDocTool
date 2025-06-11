@@ -9,6 +9,7 @@
 #define MAINWINDOW_H
 
 #include "directorytreereader.h"
+#include "filemergerwidget.h"
 
 #include <QMainWindow>
 #include <QTreeWidget>
@@ -117,11 +118,12 @@ private:
     
     QStackedWidget *stackedWidget;   ///< 堆叠部件
     QWidget *directoryReaderPage;    ///< 目录读取页面
+    FileMergerWidget *fileMergerPage; ///< 文件合并页面
     
     QSplitter *mainSplitter;         ///< 主分割器
     QLineEdit *directoryLineEdit;    ///< 目录输入框
     QPushButton *browseButton;       ///< 浏览按钮
-    QSpinBox *depthSpinBox;          ///< 深度选择框
+    QSpinBox *depthSpinBox;
     QCheckBox *filterCheckBox;       ///< 过滤复选框
     QRadioButton *wildcardRadioButton; ///< 通配符单选按钮
     QRadioButton *regexRadioButton;  ///< 正则表达式单选按钮

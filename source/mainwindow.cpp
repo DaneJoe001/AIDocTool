@@ -172,6 +172,10 @@ void MainWindow::setupUI()
     // 将分割器添加到主布局
     mainLayout->addWidget(mainSplitter);
     
+    // 创建文件合并页面
+    fileMergerPage = new FileMergerWidget(stackedWidget);
+    stackedWidget->addWidget(fileMergerPage);
+    
     // 默认显示第一页
     stackedWidget->setCurrentIndex(0);
 }
@@ -192,6 +196,7 @@ void MainWindow::setupMenus()
     // 视图菜单
     viewMenu = menuBar->addMenu("视图");
     viewMenu->addAction("目录树读取器", [this](){ switchToPage(0); });
+    viewMenu->addAction("文件合并工具", [this](){ switchToPage(1); });
 }
 
 void MainWindow::switchToPage(int index)
