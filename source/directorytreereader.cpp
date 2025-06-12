@@ -11,19 +11,12 @@ DirectoryTreeReader::DirectoryTreeReader(QObject *parent)
     , treeWidget(nullptr)
     , maxDepth(3)
     , readFiles(true)
-    , useRegex(false)
-    , watcher(new QFutureWatcher<void>(this))
     , isCancelled(false)
 {
-    connect(watcher, &QFutureWatcher<void>::finished, this, &DirectoryTreeReader::readingFinished);
 }
 
 DirectoryTreeReader::~DirectoryTreeReader()
 {
-    if (watcher->isRunning()) {
-        watcher->cancel();
-        watcher->waitForFinished();
-    }
 }
 
 void DirectoryTreeReader::setTreeWidget(QTreeWidget *treeWidget)
@@ -33,7 +26,7 @@ void DirectoryTreeReader::setTreeWidget(QTreeWidget *treeWidget)
 
 void DirectoryTreeReader::setMaxDepth(int depth)
 {
-    maxDepth = depth;
+    maxDepth = qMax(1, depth);
 }
 
 void DirectoryTreeReader::setReadFiles(bool readFiles)
@@ -41,64 +34,53 @@ void DirectoryTreeReader::setReadFiles(bool readFiles)
     this->readFiles = readFiles;
 }
 
-void DirectoryTreeReader::setFilterPattern(const QString &pattern, bool isRegex)
+void DirectoryTreeReader::setFilterRules(const QList<FileFilterUtil::FilterRule> &rules)
 {
-    filterPattern = pattern;
-    useRegex = isRegex;
+    fileFilter.setFilterRules(rules);
 }
 
-void DirectoryTreeReader::setFilterRules(const QStringList &rules)
+QList<FileFilterUtil::FilterRule> DirectoryTreeReader::getFilterRules() const
 {
-    filterRules = rules;
+    return fileFilter.getFilterRules();
 }
 
-void DirectoryTreeReader::startReading(const QString &rootPath)
+void DirectoryTreeReader::read(const QString &rootPath)
 {
     if (!treeWidget) {
-        qWarning() << "TreeWidget is not set!";
         return;
     }
-
-    // 清空之前的内容
-    treeWidget->clear();
+    
+    // 重置状态
     isCancelled = false;
+    treeWidget->clear();
     
-    // 在后台线程中执行目录读取
-    QFuture<void> future = QtConcurrent::run([this, rootPath]() {
-        populateTreeWidget(rootPath);
-    });
-    
-    watcher->setFuture(future);
-}
-
-void DirectoryTreeReader::cancelReading()
-{
-    isCancelled = true;
-    if (watcher->isRunning()) {
-        watcher->cancel();
-        watcher->waitForFinished();
-    }
-    emit readingFinished();
-}
-
-bool DirectoryTreeReader::isRunning() const
-{
-    return watcher->isRunning();
-}
-
-void DirectoryTreeReader::populateTreeWidget(const QString &rootPath)
-{
+    // 创建根项
     QDir rootDir(rootPath);
     QTreeWidgetItem *rootItem = new QTreeWidgetItem(QStringList() << rootDir.dirName() << "目录" << rootPath);
     rootItem->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
     
-    // 在主线程中安全地添加根项
-    QMetaObject::invokeMethod(treeWidget, [this, rootItem](){
-        treeWidget->addTopLevelItem(rootItem);
-    }, Qt::QueuedConnection);
+    // 添加根项
+    treeWidget->addTopLevelItem(rootItem);
     
     // 开始递归读取
     readDirectory(rootPath, rootItem, 1);
+    
+    // 发送完成信号
+    emit readingFinished();
+}
+
+void DirectoryTreeReader::cancel()
+{
+    isCancelled = true;
+}
+
+QString DirectoryTreeReader::generateTextRepresentation()
+{
+    if (!treeWidget || treeWidget->topLevelItemCount() == 0) {
+        return QString();
+    }
+    
+    return generateTextRepresentation(treeWidget->topLevelItem(0));
 }
 
 void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *parent, int currentDepth)
@@ -119,6 +101,7 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
     
     int total = entries.size();
     int processed = 0;
+    int excluded = 0;
     
     for (const QFileInfo &info : entries) {
         if (isCancelled) {
@@ -133,13 +116,13 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
         QString entryName = info.fileName();
         QString entryPath = info.filePath();
         
-        // 检查是否匹配过滤规则
-        if (!filterRules.isEmpty() && matchesFilterRules(entryPath)) {
-            continue;
-        }
-        
-        // 如果是文件且启用了过滤，则检查是否匹配
-        if (info.isFile() && !filterPattern.isEmpty() && !matchesFilter(entryName)) {
+        // 检查是否应该排除此文件/目录
+        if (fileFilter.shouldExcludeFile(entryName, entryPath)) {
+            // 仅在顶层目录输出排除信息，避免过多输出
+            if (currentDepth == 1) {
+                qDebug() << "排除:" << entryName << "(过滤规则匹配)";
+            }
+            excluded++;
             continue;
         }
         
@@ -152,79 +135,25 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
         if (info.isDir()) {
             item->setText(1, "目录");
             item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
-            
-            // 在主线程中安全地添加子项
-            QMetaObject::invokeMethod(treeWidget, [parent, item](){
-                parent->addChild(item);
-            }, Qt::QueuedConnection);
+            parent->addChild(item);
             
             // 递归处理子目录
             readDirectory(entryPath, item, currentDepth + 1);
         } else {
             item->setText(1, "文件");
             item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_FileIcon));
-            
-            // 在主线程中安全地添加子项
-            QMetaObject::invokeMethod(treeWidget, [parent, item](){
-                parent->addChild(item);
-            }, Qt::QueuedConnection);
-        }
-    }
-}
-
-bool DirectoryTreeReader::matchesFilter(const QString &fileName)
-{
-    if (filterPattern.isEmpty()) {
-        return true;
-    }
-    
-    if (!useRegex) {
-        // 使用通配符匹配
-        QRegularExpression wildcard(QRegularExpression::wildcardToRegularExpression(filterPattern));
-        return wildcard.match(fileName).hasMatch();
-    } else {
-        // 使用正则表达式匹配
-        QRegularExpression regex(filterPattern);
-        return regex.match(fileName).hasMatch();
-    }
-}
-
-bool DirectoryTreeReader::matchesFilterRules(const QString &path)
-{
-    for (const QString &rule : filterRules) {
-        QString trimmedRule = rule.trimmed();
-        if (trimmedRule.isEmpty() || trimmedRule.startsWith(QChar('#'))) {
-            continue; // 跳过空行和注释
-        }
-        
-        // 处理目录规则
-        bool isDir = trimmedRule.endsWith('/');
-        if (isDir) {
-            trimmedRule.chop(1);
-        }
-        
-        // 将gitignore风格的规则转换为通配符
-        QString pattern = trimmedRule;
-        if (pattern.startsWith(QStringLiteral("**/"))) {
-            pattern.remove(0, 3); // 移除 **/ 前缀
-        }
-        
-        // 转换为正则表达式
-        QRegularExpression regex(QRegularExpression::wildcardToRegularExpression(pattern));
-        if (regex.match(path).hasMatch()) {
-            return true; // 匹配到过滤规则
+            parent->addChild(item);
         }
     }
     
-    return false;
+    // 仅在顶层目录输出排除统计
+    if (currentDepth == 1 && excluded > 0) {
+        qDebug() << "共排除" << excluded << "个文件/目录";
+    }
 }
 
 QString DirectoryTreeReader::generateTextRepresentation(QTreeWidgetItem *item, int level)
 {
-    if (!item && treeWidget && treeWidget->topLevelItemCount() > 0) {
-        item = treeWidget->topLevelItem(0);
-    }
-    
     if (!item) {
         return QString();
     }

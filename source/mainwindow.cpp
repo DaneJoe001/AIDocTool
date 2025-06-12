@@ -1,4 +1,10 @@
 #include "mainwindow.h"
+#include "stylesheetmanager.h"
+#include "stylesettingsdialog.h"
+#include "filterrulesdialog.h"
+#include "batchrenamedialog.h"
+#include "codestatsdialog.h"
+#include "docgeneratordialog.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -35,14 +41,22 @@ MainWindow::MainWindow(QWidget *parent)
     connect(directoryReader, &DirectoryTreeReader::progressUpdated, this, &MainWindow::updateProgress);
     connect(directoryReader, &DirectoryTreeReader::readingFinished, this, &MainWindow::readingFinished);
 
+    // 连接样式管理器信号
+    connect(StyleSheetManager::instance(), &StyleSheetManager::themeChanged, this, &MainWindow::onThemeChanged);
+
+    // 连接过滤规则列表部件的信号
+    connect(filterRuleListWidget, &FilterRuleListWidget::rulesChanged, this, &MainWindow::handleFilterRulesChanged);
+
     // 初始状态
     cancelButton->setEnabled(false);
     toggleFilterOptions(false);
     filterCheckBox->setChecked(false);
-    wildcardRadioButton->setChecked(true);
     
     // 设置目录树读取器
     directoryReader->setTreeWidget(directoryTreeWidget);
+
+    // 加载保存的样式设置
+    StyleSheetManager::instance()->loadSettings();
 }
 
 MainWindow::~MainWindow()
@@ -94,39 +108,18 @@ void MainWindow::setupUI()
     
     filterCheckBox = new QCheckBox("启用文件过滤", optionsGroupBox);
     
-    QWidget *filterOptionsWidget = new QWidget(optionsGroupBox);
-    QHBoxLayout *filterOptionsLayout = new QHBoxLayout(filterOptionsWidget);
-    filterOptionsLayout->setContentsMargins(0, 0, 0, 0);
-    
-    wildcardRadioButton = new QRadioButton("通配符", filterOptionsWidget);
-    regexRadioButton = new QRadioButton("正则表达式", filterOptionsWidget);
-    QButtonGroup *filterTypeGroup = new QButtonGroup(this);
-    filterTypeGroup->addButton(wildcardRadioButton);
-    filterTypeGroup->addButton(regexRadioButton);
-    
-    filterPatternLineEdit = new QLineEdit(filterOptionsWidget);
-    filterPatternLineEdit->setPlaceholderText("输入过滤模式 (例如: *.txt 或 .*\\.txt)");
-    
-    filterOptionsLayout->addWidget(wildcardRadioButton);
-    filterOptionsLayout->addWidget(regexRadioButton);
-    filterOptionsLayout->addWidget(filterPatternLineEdit);
+    // 创建过滤规则列表部件
+    filterRuleListWidget = new FilterRuleListWidget(optionsGroupBox);
+    filterRuleListWidget->setEnabled(false);
     
     readFilesCheckBox = new QCheckBox("读取文件名", optionsGroupBox);
     readFilesCheckBox->setChecked(true);
     
-    // 添加过滤规则文本框
-    QLabel *filterRulesLabel = new QLabel("过滤规则 (类似.gitignore):", optionsGroupBox);
-    filterRulesTextEdit = new QPlainTextEdit(optionsGroupBox);
-    filterRulesTextEdit->setPlaceholderText("每行一个规则\n例如:\n*.tmp\n*.log\nnode_modules/\n.git/");
-    filterRulesTextEdit->setMaximumHeight(100);
-    
     optionsLayout->addWidget(depthLabel, 0, 0);
     optionsLayout->addWidget(depthSpinBox, 0, 1);
-    optionsLayout->addWidget(filterCheckBox, 1, 0);
-    optionsLayout->addWidget(filterOptionsWidget, 1, 1);
-    optionsLayout->addWidget(readFilesCheckBox, 2, 0);
-    optionsLayout->addWidget(filterRulesLabel, 3, 0, 1, 2);
-    optionsLayout->addWidget(filterRulesTextEdit, 4, 0, 1, 2);
+    optionsLayout->addWidget(filterCheckBox, 1, 0, 1, 2);
+    optionsLayout->addWidget(filterRuleListWidget, 2, 0, 1, 2);
+    optionsLayout->addWidget(readFilesCheckBox, 3, 0, 1, 2);
     
     // 操作按钮区域
     QHBoxLayout *actionLayout = new QHBoxLayout();
@@ -197,6 +190,30 @@ void MainWindow::setupMenus()
     viewMenu = menuBar->addMenu("视图");
     viewMenu->addAction("目录树读取器", [this](){ switchToPage(0); });
     viewMenu->addAction("文件合并工具", [this](){ switchToPage(1); });
+
+    // 工具菜单
+    toolsMenu = menuBar->addMenu("工具");
+    batchRenameAction = toolsMenu->addAction("批量文件重命名", this, &MainWindow::openBatchRenameDialog);
+    codeStatsAction = toolsMenu->addAction("代码统计工具", this, &MainWindow::openCodeStatsDialog);
+    docGeneratorAction = toolsMenu->addAction("文档生成工具", this, &MainWindow::openDocGeneratorDialog);
+
+    // 设置菜单
+    settingsMenu = menuBar->addMenu("设置");
+    styleSettingsAction = settingsMenu->addAction("样式设置", this, &MainWindow::openStyleSettings);
+    filterRulesAction = settingsMenu->addAction("过滤规则管理", this, &MainWindow::openFilterRulesDialog);
+}
+
+void MainWindow::openStyleSettings()
+{
+    StyleSettingsDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::onThemeChanged(const QString &themeName)
+{
+    // 可以在这里添加主题变更后的特定处理
+    // 例如更新状态栏显示当前主题等
+    statusLabel->setText(QString("当前主题: %1").arg(themeName));
 }
 
 void MainWindow::switchToPage(int index)
@@ -216,55 +233,41 @@ void MainWindow::browseDirectory()
 
 void MainWindow::startReading()
 {
-    QString dirPath = directoryLineEdit->text();
-    if (dirPath.isEmpty()) {
-        QMessageBox::warning(this, "警告", "请先选择一个目录");
+    QString rootPath = directoryLineEdit->text();
+    if (rootPath.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请选择一个目录");
         return;
     }
 
-    QDir dir(dirPath);
-    if (!dir.exists()) {
-        QMessageBox::warning(this, "警告", "所选目录不存在");
-        return;
-    }
-
-    // 清空文本显示
+    // 清空树控件
+    directoryTreeWidget->clear();
     directoryTextDisplay->clear();
     
-    // 设置目录读取器参数
+    // 设置选项
     directoryReader->setMaxDepth(depthSpinBox->value());
     directoryReader->setReadFiles(readFilesCheckBox->isChecked());
     
-    // 设置过滤选项
-    if (filterCheckBox->isChecked()) {
-        directoryReader->setFilterPattern(filterPatternLineEdit->text(), regexRadioButton->isChecked());
-    } else {
-        directoryReader->setFilterPattern("", false);
-    }
-    
     // 设置过滤规则
-    QStringList rules;
-    QString rulesText = filterRulesTextEdit->toPlainText();
-    if (!rulesText.isEmpty()) {
-        rules = rulesText.split("\n", Qt::SkipEmptyParts);
+    if (filterCheckBox->isChecked()) {
+        directoryReader->setFilterRules(filterRuleListWidget->getFilterRules());
+    } else {
+        directoryReader->setFilterRules(QList<FileFilterUtil::FilterRule>());
     }
-    directoryReader->setFilterRules(rules);
     
-    // 禁用开始按钮，启用取消按钮
+    // 更新UI状态
     startButton->setEnabled(false);
     cancelButton->setEnabled(true);
     progressBar->setVisible(true);
     progressBar->setValue(0);
-    
     statusLabel->setText("正在读取目录...");
     
     // 开始读取
-    directoryReader->startReading(dirPath);
+    directoryReader->read(rootPath);
 }
 
 void MainWindow::cancelReading()
 {
-    directoryReader->cancelReading();
+    directoryReader->cancel();
     statusLabel->setText("正在取消...");
 }
 
@@ -290,9 +293,21 @@ void MainWindow::readingFinished()
 
 void MainWindow::toggleFilterOptions(bool enabled)
 {
-    wildcardRadioButton->setEnabled(enabled);
-    regexRadioButton->setEnabled(enabled);
-    filterPatternLineEdit->setEnabled(enabled);
+    filterRuleListWidget->setEnabled(enabled);
+    
+    // 更新DirectoryTreeReader的过滤规则状态
+    if (directoryReader) {
+        if (enabled) {
+            directoryReader->setFilterRules(filterRules);
+        } else {
+            directoryReader->setFilterRules(QList<FileFilterUtil::FilterRule>());
+        }
+        
+        // 提示用户重新读取，但不自动触发
+        if (directoryTreeWidget->topLevelItemCount() > 0) {
+            statusLabel->setText("过滤选项已" + QString(enabled ? "启用" : "禁用") + "，请点击\"开始读取\"按钮重新应用");
+        }
+    }
 }
 
 void MainWindow::updateTextDisplay()
@@ -309,9 +324,83 @@ void MainWindow::updateTextDisplay()
     }
     
     if (rootItem) {
-        QString text = directoryReader->generateTextRepresentation(rootItem);
+        QString text;
+        // 使用选中的项生成文本表示
+        if (rootItem == directoryTreeWidget->topLevelItem(0)) {
+            // 如果是根项，使用 DirectoryTreeReader 的方法
+            text = directoryReader->generateTextRepresentation();
+        } else {
+            // 否则手动生成文本表示
+            text = generateTextRepresentation(rootItem);
+        }
         directoryTextDisplay->setPlainText(text);
     }
+}
+
+QString MainWindow::generateTextRepresentation(QTreeWidgetItem *item, int level)
+{
+    if (!item) {
+        return QString();
+    }
+    
+    QString result;
+    
+    // 根节点特殊处理
+    if (level == 0) {
+        result = item->text(0) + "/\n";
+    } else {
+        // 构建前缀
+        QString prefix;
+        for (int i = 0; i < level - 1; i++) {
+            prefix += "│   ";
+        }
+        
+        // 添加当前项的连接线
+        if (level > 0) {
+            prefix += "├── ";
+        }
+        
+        // 添加当前项
+        if (item->text(1) == "目录") {
+            result = prefix + item->text(0) + "/\n";
+        } else {
+            result = prefix + item->text(0) + "\n";
+        }
+    }
+    
+    // 处理子项
+    int childCount = item->childCount();
+    for (int i = 0; i < childCount; ++i) {
+        QTreeWidgetItem *child = item->child(i);
+        
+        // 最后一个子项使用不同的连接线
+        if (i == childCount - 1) {
+            // 保存原始结果
+            QString originalResult = result;
+            
+            // 将下一级的"├──"替换为"└──"
+            QString childText = generateTextRepresentation(child, level + 1);
+            if (level >= 0) {
+                childText.replace(level * 4, 4, "└── ");
+                
+                // 将后续行的"│   "替换为"    "
+                int pos = childText.indexOf('\n');
+                while (pos >= 0 && pos < childText.length() - 1) {
+                    int prefixPos = pos + 1 + level * 4;
+                    if (prefixPos + 4 <= childText.length() && 
+                        childText.mid(prefixPos, 4) == "│   ") {
+                        childText.replace(prefixPos, 4, "    ");
+                    }
+                    pos = childText.indexOf('\n', pos + 1);
+                }
+            }
+            result = originalResult + childText;
+        } else {
+            result += generateTextRepresentation(child, level + 1);
+        }
+    }
+    
+    return result;
 }
 
 void MainWindow::exportToTxtFile()
@@ -344,20 +433,51 @@ void MainWindow::exportToTxtFile()
 
 void MainWindow::importFilterRules()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, "导入过滤规则文件",
-                                                  QString(),
-                                                  "文本文件 (*.txt *.gitignore);;所有文件 (*)");
-    if (fileName.isEmpty()) {
-        return;
+    // 使用新的过滤规则对话框替代原有的导入逻辑
+    openFilterRulesDialog();
+}
+
+void MainWindow::openFilterRulesDialog()
+{
+    FilterRulesDialog dialog(this);
+    dialog.setFilterRules(filterRules);
+    
+    if (dialog.exec() == QDialog::Accepted) {
+        filterRules = dialog.getFilterRules();
+        filterRuleListWidget->setFilterRules(filterRules);
+    }
+}
+
+void MainWindow::openBatchRenameDialog()
+{
+    BatchRenameDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::openCodeStatsDialog()
+{
+    CodeStatsDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::openDocGeneratorDialog()
+{
+    DocGeneratorDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::handleFilterRulesChanged(const QList<FileFilterUtil::FilterRule> &rules)
+{
+    filterRules = rules;
+    
+    // 立即更新DirectoryTreeReader的过滤规则
+    if (directoryReader) {
+        directoryReader->setFilterRules(filterRules);
     }
     
-    QFile file(fileName);
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QMessageBox::critical(this, "错误", "无法打开文件");
-        return;
+    // 如果启用了过滤并且已经读取了目录，则重新应用过滤规则
+    // 但不立即触发重新读取，而是让用户手动点击"开始读取"按钮
+    if (filterCheckBox->isChecked() && directoryTreeWidget->topLevelItemCount() > 0) {
+        statusLabel->setText("过滤规则已更新，请点击\"开始读取\"按钮重新应用");
     }
-    
-    QTextStream in(&file);
-    filterRulesTextEdit->setPlainText(in.readAll());
-    file.close();
 } 
