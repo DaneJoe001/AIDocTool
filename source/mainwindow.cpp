@@ -496,16 +496,22 @@ void MainWindow::showAboutDialog()
     about.setWindowTitle("关于 AI文档工具集");
     about.setTextFormat(Qt::RichText);
     
-    QString aboutText = "<h2>AI文档工具集 v0.6</h2>";
+    QString aboutText = "<h2>AI文档工具集 v0.7</h2>";
     aboutText += "<p>一款专为开发者设计的代码文档工具集，提供目录树读取、代码统计、文件合并等功能。</p>";
     aboutText += "<p><b>开发者信息：</b></p>";
     aboutText += "<ul>";
-    aboutText += "<li>项目维护者：AIDocTools 团队</li>";
-    aboutText += "<li>贡献者：开发团队全体成员</li>";
-    aboutText += "<li>版权所有 © 2023-2024 AIDocTools</li>";
+    aboutText += "<li>作者：DaneJoe001</li>";
+    aboutText += "<li>邮箱：<a href='mailto:2845547447@qq.com'>2845547447@qq.com</a></li>";
+    aboutText += "<li>博客：<a href='https://danejoe001.github.io/'>https://danejoe001.github.io/</a></li>";
+    aboutText += "<li>版权所有 © 2023-2024 DaneJoe001</li>";
     aboutText += "</ul>";
-    aboutText += "<p>本软件使用 Qt 框架开发，基于 C++17 标准。</p>";
-    aboutText += "<p>问题反馈与建议：<a href='mailto:support@aidoctools.example.com'>support@aidoctools.example.com</a></p>";
+    aboutText += "<p><b>开发工具与技术：</b></p>";
+    aboutText += "<ul>";
+    aboutText += "<li>使用 Cursor 编辑器开发</li>";
+    aboutText += "<li>基于 Qt 6.5.3 框架</li>";
+    aboutText += "<li>使用 C++17 标准</li>";
+    aboutText += "<li>AI 辅助：Claude 3.7 Sonnet</li>";
+    aboutText += "</ul>";
     
     about.setText(aboutText);
     about.setIconPixmap(QPixmap(":/icons/main_icon.ico").scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
