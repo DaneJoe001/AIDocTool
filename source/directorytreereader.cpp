@@ -5,6 +5,9 @@
 #include <QDebug>
 #include <QStyle>
 #include <QApplication>
+#include <filesystem>
+
+namespace fs = std::filesystem;
 
 DirectoryTreeReader::DirectoryTreeReader(QObject *parent)
     : QObject(parent)
@@ -103,6 +106,33 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
     int processed = 0;
     int excluded = 0;
     
+    // 检查是否有文件类型包含规则
+    bool hasFileTypeIncludeRule = false;
+    for (const FileFilterUtil::FilterRule &rule : fileFilter.getFilterRules()) {
+        if (!rule.enabled || rule.filterMode != FileFilterUtil::FilterMode::Include) continue;
+        
+        if (rule.pattern.startsWith("*.") || 
+            (rule.pattern.contains('.') && !rule.pattern.contains('/') && !rule.pattern.contains('\\'))) {
+            hasFileTypeIncludeRule = true;
+            break;
+        }
+    }
+    
+    // 允许build目录自动排除的标志
+    bool allowBuildExclusion = true;
+    
+    // 检查是否有明确包含build目录的规则
+    for (const FileFilterUtil::FilterRule &rule : fileFilter.getFilterRules()) {
+        if (!rule.enabled) continue;
+        
+        if (rule.filterMode == FileFilterUtil::FilterMode::Include) {
+            if (rule.pattern.contains("build", Qt::CaseInsensitive)) {
+                allowBuildExclusion = false;
+                break;
+            }
+        }
+    }
+    
     for (const QFileInfo &info : entries) {
         if (isCancelled) {
             return;
@@ -116,8 +146,53 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
         QString entryName = info.fileName();
         QString entryPath = info.filePath();
         
+        // 特殊处理build目录
+        if (info.isDir() && allowBuildExclusion) {
+            QString lowerName = entryName.toLower();
+            if (lowerName == "build" || entryPath.toLower().contains("/build/")) {
+                // 在顶层目录输出排除信息
+                if (currentDepth == 1) {
+                    qDebug() << "排除:" << entryName << "(build目录自动排除)";
+                }
+                excluded++;
+                continue;
+            }
+        }
+        
         // 检查是否应该排除此文件/目录
-        if (fileFilter.shouldExcludeFile(entryName, entryPath)) {
+        bool shouldExclude = fileFilter.shouldExcludeFile(entryName, entryPath);
+        
+        // 目录的特殊处理
+        if (shouldExclude && info.isDir() && hasFileTypeIncludeRule) {
+            // 如果有文件类型包含规则(如*.cpp)，并且没有明确排除此目录的规则，则继续遍历
+            bool hasSpecificDirExcludeRule = false;
+            for (const FileFilterUtil::FilterRule &rule : fileFilter.getFilterRules()) {
+                if (!rule.enabled || rule.filterMode != FileFilterUtil::FilterMode::Exclude) continue;
+                
+                // 检查是否有明确针对该目录的排除规则
+                QString pattern = rule.pattern;
+                pattern = pattern.replace('\\', '/');
+                if (pattern.endsWith('/')) {
+                    pattern = pattern.left(pattern.length() - 1);
+                }
+                
+                if (entryName.compare(pattern, Qt::CaseInsensitive) == 0 || 
+                    entryPath.contains("/" + pattern + "/", Qt::CaseInsensitive)) {
+                    hasSpecificDirExcludeRule = true;
+                    break;
+                }
+            }
+            
+            // 如果没有明确排除此目录的规则，则允许继续遍历
+            if (!hasSpecificDirExcludeRule) {
+                shouldExclude = false;
+                if (currentDepth == 1) {
+                    qDebug() << "允许目录:" << entryName << "(有文件类型包含规则，允许遍历)";
+                }
+            }
+        }
+        
+        if (shouldExclude) {
             // 仅在顶层目录输出排除信息，避免过多输出
             if (currentDepth == 1) {
                 qDebug() << "排除:" << entryName << "(过滤规则匹配)";
