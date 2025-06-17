@@ -19,6 +19,8 @@
 #include <QTextStream>
 #include <QStandardPaths>
 #include <QApplication>
+#include <QDesktopServices>
+#include <QUrl>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -201,6 +203,12 @@ void MainWindow::setupMenus()
     settingsMenu = menuBar->addMenu("设置");
     styleSettingsAction = settingsMenu->addAction("样式设置", this, &MainWindow::openStyleSettings);
     filterRulesAction = settingsMenu->addAction("过滤规则管理", this, &MainWindow::openFilterRulesDialog);
+
+    // 帮助菜单
+    helpMenu = menuBar->addMenu("帮助");
+    helpAction = helpMenu->addAction("使用帮助", this, &MainWindow::showHelpDocument);
+    helpMenu->addSeparator();
+    aboutAction = helpMenu->addAction("关于", this, &MainWindow::showAboutDialog);
 }
 
 void MainWindow::openStyleSettings()
@@ -261,7 +269,7 @@ void MainWindow::startReading()
     progressBar->setValue(0);
     statusLabel->setText("正在读取目录...");
     
-    // 开始读取
+    // 开始读取（现在是异步的）
     directoryReader->read(rootPath);
 }
 
@@ -480,4 +488,65 @@ void MainWindow::handleFilterRulesChanged(const QList<FileFilterUtil::FilterRule
     if (filterCheckBox->isChecked() && directoryTreeWidget->topLevelItemCount() > 0) {
         statusLabel->setText("过滤规则已更新，请点击\"开始读取\"按钮重新应用");
     }
+}
+
+void MainWindow::showAboutDialog()
+{
+    QMessageBox about(this);
+    about.setWindowTitle("关于 AI文档工具集");
+    about.setTextFormat(Qt::RichText);
+    
+    QString aboutText = "<h2>AI文档工具集 v0.6</h2>";
+    aboutText += "<p>一款专为开发者设计的代码文档工具集，提供目录树读取、代码统计、文件合并等功能。</p>";
+    aboutText += "<p><b>开发者信息：</b></p>";
+    aboutText += "<ul>";
+    aboutText += "<li>项目维护者：AIDocTools 团队</li>";
+    aboutText += "<li>贡献者：开发团队全体成员</li>";
+    aboutText += "<li>版权所有 © 2023-2024 AIDocTools</li>";
+    aboutText += "</ul>";
+    aboutText += "<p>本软件使用 Qt 框架开发，基于 C++17 标准。</p>";
+    aboutText += "<p>问题反馈与建议：<a href='mailto:support@aidoctools.example.com'>support@aidoctools.example.com</a></p>";
+    
+    about.setText(aboutText);
+    about.setIconPixmap(QPixmap(":/icons/main_icon.ico").scaled(64, 64, Qt::KeepAspectRatio, Qt::SmoothTransformation));
+    about.setStandardButtons(QMessageBox::Ok);
+    
+    about.exec();
+}
+
+void MainWindow::showHelpDocument()
+{
+    QMessageBox helpMsg(this);
+    helpMsg.setWindowTitle("使用帮助");
+    helpMsg.setTextFormat(Qt::RichText);
+    
+    QString helpText = "<h2>AI文档工具集使用指南</h2>";
+    helpText += "<h3>主要功能：</h3>";
+    helpText += "<ol>";
+    helpText += "<li><b>目录树读取器</b>：读取并显示指定目录的文件结构，支持过滤规则和深度控制。</li>";
+    helpText += "<li><b>文件合并工具</b>：根据条件搜索并合并多个文本文件。</li>";
+    helpText += "<li><b>批量文件重命名</b>：批量修改文件名，支持正则表达式和自定义规则。</li>";
+    helpText += "<li><b>代码统计工具</b>：统计代码行数、注释比例等指标。</li>";
+    helpText += "<li><b>文档生成工具</b>：基于代码自动生成文档结构。</li>";
+    helpText += "</ol>";
+    
+    helpText += "<h3>基本操作指南：</h3>";
+    helpText += "<ul>";
+    helpText += "<li><b>目录浏览</b>：点击\"浏览\"按钮选择要读取的目录。</li>";
+    helpText += "<li><b>搜索深度</b>：设置目录递归读取的最大深度。</li>";
+    helpText += "<li><b>过滤规则</b>：启用过滤可根据规则排除或包含特定文件。</li>";
+    helpText += "<li><b>导出结果</b>：读取完成后可将结果导出为文本文件。</li>";
+    helpText += "</ul>";
+    
+    helpText += "<h3>使用技巧：</h3>";
+    helpText += "<ul>";
+    helpText += "<li>使用过滤规则可以排除不必要的文件（如 .git 目录）。</li>";
+    helpText += "<li>设置合理的搜索深度可以提高读取性能。</li>";
+    helpText += "<li>可以通过\"样式设置\"更改界面主题风格。</li>";
+    helpText += "</ul>";
+    
+    helpMsg.setText(helpText);
+    helpMsg.setStandardButtons(QMessageBox::Ok);
+    
+    helpMsg.exec();
 } 

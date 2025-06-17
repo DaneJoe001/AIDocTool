@@ -10,6 +10,7 @@
 
 #include "directorytreereader.h"
 #include "filemergerwidget.h"
+#include "filterrulelistwidget.h"
 
 #include <QMainWindow>
 #include <QTreeWidget>
@@ -108,13 +109,70 @@ private slots:
      */
     void switchToPage(int index);
 
+    /**
+     * @brief 打开样式设置对话框
+     */
+    void openStyleSettings();
+
+    /**
+     * @brief 主题变更处理函数
+     * @param themeName 主题名称
+     */
+    void onThemeChanged(const QString &themeName);
+
+    /**
+     * @brief 打开过滤规则对话框
+     */
+    void openFilterRulesDialog();
+
+    /**
+     * @brief 打开批量文件重命名工具
+     */
+    void openBatchRenameDialog();
+
+    /**
+     * @brief 打开代码统计工具
+     */
+    void openCodeStatsDialog();
+
+    /**
+     * @brief 打开文档生成工具
+     */
+    void openDocGeneratorDialog();
+
+    /**
+     * @brief 处理过滤规则变更
+     * @param rules 更新后的规则列表
+     */
+    void handleFilterRulesChanged(const QList<FileFilterUtil::FilterRule> &rules);
+
+    /**
+     * @brief 显示关于对话框
+     */
+    void showAboutDialog();
+
+    /**
+     * @brief 显示帮助文档
+     */
+    void showHelpDocument();
+
 private:
     // UI组件
     QMenuBar *menuBar;           ///< 菜单栏
     QMenu *fileMenu;             ///< 文件菜单
     QMenu *viewMenu;             ///< 视图菜单
+    QMenu *settingsMenu;         ///< 设置菜单
+    QMenu *toolsMenu;            ///< 工具菜单
+    QMenu *helpMenu;             ///< 帮助菜单
     QAction *exportAction;       ///< 导出动作
     QAction *importFilterAction; ///< 导入过滤规则动作
+    QAction *styleSettingsAction; ///< 样式设置动作
+    QAction *filterRulesAction;  ///< 过滤规则动作
+    QAction *batchRenameAction;  ///< 批量重命名动作
+    QAction *codeStatsAction;    ///< 代码统计动作
+    QAction *docGeneratorAction; ///< 文档生成动作
+    QAction *aboutAction;        ///< 关于动作
+    QAction *helpAction;         ///< 帮助动作
     
     QStackedWidget *stackedWidget;   ///< 堆叠部件
     QWidget *directoryReaderPage;    ///< 目录读取页面
@@ -125,9 +183,7 @@ private:
     QPushButton *browseButton;       ///< 浏览按钮
     QSpinBox *depthSpinBox;
     QCheckBox *filterCheckBox;       ///< 过滤复选框
-    QRadioButton *wildcardRadioButton; ///< 通配符单选按钮
-    QRadioButton *regexRadioButton;  ///< 正则表达式单选按钮
-    QLineEdit *filterPatternLineEdit; ///< 过滤模式输入框
+    FilterRuleListWidget *filterRuleListWidget; ///< 过滤规则列表部件
     QCheckBox *readFilesCheckBox;    ///< 读取文件复选框
     QPushButton *startButton;        ///< 开始按钮
     QPushButton *cancelButton;       ///< 取消按钮
@@ -135,14 +191,9 @@ private:
     QTextEdit *directoryTextDisplay;  ///< 目录文本显示
     QProgressBar *progressBar;       ///< 进度条
     QLabel *statusLabel;             ///< 状态标签
-    QPlainTextEdit *filterRulesTextEdit; ///< 过滤规则文本框
-    
-    // 读取目录的工作线程相关
-    QFutureWatcher<void> *watcher;
-    bool isCancelled;
     
     // 过滤规则
-    QStringList filterRules;
+    QList<FileFilterUtil::FilterRule> filterRules;
 
     // 目录树读取器
     DirectoryTreeReader *directoryReader; ///< 目录树读取器
@@ -160,6 +211,12 @@ private:
     bool matchesFilter(const QString &fileName);
     void populateTreeWidget(const QString &rootPath, int maxDepth);
     QString generateTextRepresentation(QTreeWidgetItem *item, int level = 0);
+    
+    /**
+     * @brief 检查文件是否匹配过滤规则
+     * @param path 文件路径
+     * @return 如果文件匹配规则则返回true，否则返回false
+     */
     bool matchesFilterRules(const QString &path);
 };
 

@@ -16,10 +16,18 @@ DirectoryTreeReader::DirectoryTreeReader(QObject *parent)
     , readFiles(true)
     , isCancelled(false)
 {
+    // 初始化FutureWatcher并连接信号
+    watcher = new QFutureWatcher<void>(this);
+    connect(watcher, &QFutureWatcher<void>::finished, this, &DirectoryTreeReader::onReadingFinished);
 }
 
 DirectoryTreeReader::~DirectoryTreeReader()
 {
+    // 确保取消任何正在运行的任务
+    if (watcher->isRunning()) {
+        isCancelled = true;
+        watcher->waitForFinished();
+    }
 }
 
 void DirectoryTreeReader::setTreeWidget(QTreeWidget *treeWidget)
@@ -53,28 +61,42 @@ void DirectoryTreeReader::read(const QString &rootPath)
         return;
     }
     
+    // 如果已经有一个正在运行的操作，先取消它
+    if (watcher->isRunning()) {
+        isCancelled = true;
+        watcher->waitForFinished();
+    }
+    
     // 重置状态
     isCancelled = false;
     treeWidget->clear();
     
     // 创建根项
     QDir rootDir(rootPath);
-    QTreeWidgetItem *rootItem = new QTreeWidgetItem(QStringList() << rootDir.dirName() << "目录" << rootPath);
+    rootItem = new QTreeWidgetItem(QStringList() << rootDir.dirName() << "目录" << rootPath);
     rootItem->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
     
     // 添加根项
     treeWidget->addTopLevelItem(rootItem);
     
-    // 开始递归读取
-    readDirectory(rootPath, rootItem, 1);
+    // 在后台线程中执行目录读取操作
+    QFuture<void> future = QtConcurrent::run([this, rootPath]() {
+        this->readDirectory(rootPath, rootItem, 1);
+    });
     
-    // 发送完成信号
-    emit readingFinished();
+    // 设置FutureWatcher以监视异步操作
+    watcher->setFuture(future);
 }
 
 void DirectoryTreeReader::cancel()
 {
     isCancelled = true;
+}
+
+void DirectoryTreeReader::onReadingFinished()
+{
+    // 读取完成后发送信号
+    emit readingFinished();
 }
 
 QString DirectoryTreeReader::generateTextRepresentation()
@@ -201,23 +223,29 @@ void DirectoryTreeReader::readDirectory(const QString &path, QTreeWidgetItem *pa
             continue;
         }
         
-        // 创建树项
-        QTreeWidgetItem *item = new QTreeWidgetItem();
-        item->setText(0, entryName);
-        item->setText(2, entryPath);
-        item->setFlags(item->flags() | Qt::ItemIsEditable);
-        
-        if (info.isDir()) {
-            item->setText(1, "目录");
-            item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
-            parent->addChild(item);
+        // 创建树项并添加到树中，使用QMetaObject::invokeMethod确保UI更新在主线程进行
+        QTreeWidgetItem *item = nullptr;
+        QMetaObject::invokeMethod(this, [this, &item, entryName, entryPath, info, parent]() {
+            item = new QTreeWidgetItem();
+            item->setText(0, entryName);
+            item->setText(2, entryPath);
+            item->setFlags(item->flags() | Qt::ItemIsEditable);
             
-            // 递归处理子目录
-            readDirectory(entryPath, item, currentDepth + 1);
-        } else {
-            item->setText(1, "文件");
-            item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_FileIcon));
+            if (info.isDir()) {
+                item->setText(1, "目录");
+                item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_DirIcon));
+            } else {
+                item->setText(1, "文件");
+                item->setIcon(0, QApplication::style()->standardIcon(QStyle::SP_FileIcon));
+            }
+            
             parent->addChild(item);
+            return;
+        }, Qt::BlockingQueuedConnection);
+        
+        // 如果是目录，递归处理
+        if (info.isDir() && item != nullptr) {
+            readDirectory(entryPath, item, currentDepth + 1);
         }
     }
     
