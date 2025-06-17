@@ -503,7 +503,7 @@ void MainWindow::showAboutDialog()
     aboutText += "<li>作者：DaneJoe001</li>";
     aboutText += "<li>邮箱：<a href='mailto:2845547447@qq.com'>2845547447@qq.com</a></li>";
     aboutText += "<li>博客：<a href='https://danejoe001.github.io/'>https://danejoe001.github.io/</a></li>";
-    aboutText += "<li>版权所有 © 2023-2024 DaneJoe001</li>";
+    aboutText += "<li>版权所有 © 2023-2025 DaneJoe001</li>";
     aboutText += "</ul>";
     aboutText += "<p><b>开发工具与技术：</b></p>";
     aboutText += "<ul>";
