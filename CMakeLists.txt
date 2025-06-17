@@ -14,6 +14,14 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# 设置发布模式
+set(CMAKE_BUILD_TYPE Release)
+if(MSVC)
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /O2 /GL /Gy /MT")
+else()
+    set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3")
+endif()
+
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
@@ -31,38 +39,49 @@ list(FILTER SOURCES EXCLUDE REGEX ".*test_.*\\.cpp$")
 # 手动添加新的源文件
 list(APPEND SOURCES "source/filterrulelistwidget.cpp" "include/filterrulelistwidget.h")
 
-add_executable(aidoctools ${SOURCES} ${RESOURCES})
+# 添加Windows资源文件
+if(WIN32)
+    set(APP_ICON_RESOURCE_WINDOWS "${CMAKE_CURRENT_SOURCE_DIR}/resource/app_icon.rc")
+endif()
+
+add_executable(aidoctools ${SOURCES} ${RESOURCES} ${APP_ICON_RESOURCE_WINDOWS})
 
 target_compile_definitions(aidoctools PRIVATE RESOURCE_DIR="${RESOURCE_DIR}")
 target_link_libraries(aidoctools PRIVATE Qt6::Core Qt6::Widgets Qt6::Concurrent)
 target_include_directories(aidoctools PRIVATE include)
 
-#设置qDebug在终端输出
+# 设置为窗口应用程序，去掉控制台输出
 set_target_properties(aidoctools PROPERTIES
-    WIN32_EXECUTABLE OFF
+    WIN32_EXECUTABLE ON
     MACOSX_BUNDLE ON
 )
 
-# 添加测试程序
-add_executable(test_filter_rules "source/test_filter_rules.cpp" "source/filefilterutil.cpp")
-target_include_directories(test_filter_rules PRIVATE include)
-target_link_libraries(test_filter_rules PRIVATE Qt6::Core)
-set_target_properties(test_filter_rules PROPERTIES AUTOMOC ON)
+# 添加静态链接选项，尽量减少依赖
+if(MSVC)
+    target_link_options(aidoctools PRIVATE /INCREMENTAL:NO /LTCG)
+    if(CMAKE_BUILD_TYPE STREQUAL "Release")
+        set_property(TARGET aidoctools PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    endif()
+endif()
 
-# 添加批量文件重命名工具测试程序
-add_executable(test_batch_rename "source/test_batch_rename.cpp" "source/batchrenamedialog.cpp")
-target_include_directories(test_batch_rename PRIVATE include)
-target_link_libraries(test_batch_rename PRIVATE Qt6::Core Qt6::Widgets)
-set_target_properties(test_batch_rename PROPERTIES AUTOMOC ON)
+# 设置安装规则
+install(TARGETS aidoctools DESTINATION bin)
 
-# 添加代码统计工具测试程序
-add_executable(test_code_stats "source/test_code_stats.cpp" "source/codestatsdialog.cpp")
-target_include_directories(test_code_stats PRIVATE include)
-target_link_libraries(test_code_stats PRIVATE Qt6::Core Qt6::Widgets Qt6::Concurrent)
-set_target_properties(test_code_stats PROPERTIES AUTOMOC ON)
-
-# 添加文档生成工具测试程序
-add_executable(test_doc_generator "source/test_doc_generator.cpp" "source/docgeneratordialog.cpp")
-target_include_directories(test_doc_generator PRIVATE include)
-target_link_libraries(test_doc_generator PRIVATE Qt6::Core Qt6::Widgets Qt6::Concurrent)
-set_target_properties(test_doc_generator PROPERTIES AUTOMOC ON)
+# Qt部署工具配置
+if(WIN32)
+    # 使用windeployqt工具打包Qt依赖
+    find_program(WINDEPLOYQT_EXECUTABLE windeployqt HINTS "${CMAKE_PREFIX_PATH}/bin")
+    if(WINDEPLOYQT_EXECUTABLE)
+        add_custom_command(TARGET aidoctools POST_BUILD
+            COMMAND "${WINDEPLOYQT_EXECUTABLE}"
+                --no-translations
+                --no-system-d3d-compiler
+                --no-opengl-sw
+                --no-compiler-runtime
+                --release
+                --verbose 0
+                "$<TARGET_FILE:aidoctools>"
+            COMMENT "Running windeployqt..."
+        )
+    endif()
+endif()

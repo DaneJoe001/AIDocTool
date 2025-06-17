@@ -5,6 +5,13 @@ release/
 out/
 cmake-build-*/
 
+# Release packages
+*.zip
+*.7z
+*.tar.gz
+*.tar.xz
+*.rar
+
 # Qt specific
 *.pro.user
 *.pro.user.*
